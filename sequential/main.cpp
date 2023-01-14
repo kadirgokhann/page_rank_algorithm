@@ -57,12 +57,6 @@ CSR* csr;
 
 int main(int arg, char* argv[])
 {
-    // For MPI
-    int rank, size;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
-
-
     // Inıtialize the variables
     string first,second;
     int index = 0;
@@ -120,7 +114,6 @@ int main(int arg, char* argv[])
     int priorLen = 0;
     int priorNonzero = 0;
 
-    if (rank == 0) {
         for(int i = 0; i < n_number_of_nodes; i++){
             if(all_edges_new.find(i) == all_edges_new.end()){
                 csr->row_begin[i] = 0; 
@@ -146,7 +139,7 @@ int main(int arg, char* argv[])
             }
             csr->values[i] = 1. / out_arrows[csr->col_indices[i]];
         }
-   }
+
 
     vector<double> r0(n_number_of_nodes, 1.0); // This holds the initial rank of the nodes
     vector<double> r_next(n_number_of_nodes, 0.0); // This holds the next iteration of the pagerank

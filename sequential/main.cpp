@@ -15,8 +15,6 @@
 #include <cmath>
 #include <omp.h>
 #include <chrono>
-#include <mpi.h>
-#include <metis.h>
 
 using namespace std;
 
@@ -57,7 +55,7 @@ CSR* csr;
 
 int main(int arg, char* argv[])
 {
-    // Inıtialize the variables
+	    // Inıtialize the variables
     string first,second;
     int index = 0;
     // This holdes the all edges as source and destination
@@ -107,39 +105,85 @@ int main(int arg, char* argv[])
     //READIN FILE ENDS
     printf("--> File is read\n");
     int n_number_of_nodes = dictionary.size(); // Number of nodes
+    #if DEBUG_FILE_READ
+     printf("--> Dictionary: \n");
+    {    
+        for (auto it = dictionary.begin(); it != dictionary.end(); ++it)
+    {
+        cout << it->first << " => " << it->second << '\n';
+    }
+        printf("---------------\n");
+    }
+    #endif
+    
+    #if DEBUG_FILE_READ
+    {
+        printf("--> N_number_of_nodes: %d\n", n_number_of_nodes);
+        printf("--> All_edges: \n");
+
+            for (auto k : all_edges_new){
+                sort(k.second.begin(), k.second.end());
+                cout << k.first<< " => ";
+                for(int j = 0; j < k.second.size(); j++){
+                    cout << k.second[j] << " ";
+                }
+             cout << endl;
+        }
+        printf("---------------\n");
+    }
+    #endif
 
     printf("--> Out_arrows are calculated\n");
     csr = new CSR(n_number_of_nodes);
     csr->row_begin[0] = 0;
     int priorLen = 0;
     int priorNonzero = 0;
-
-        for(int i = 0; i < n_number_of_nodes; i++){
-            if(all_edges_new.find(i) == all_edges_new.end()){
-                csr->row_begin[i] = 0; 
-            }else{
-                vector<int>* adjList = &all_edges_new[i];
-                csr->row_begin[i] = priorNonzero + priorLen;
-                priorNonzero = priorNonzero + priorLen;
-                priorLen = adjList->size();
-            
-                sort(adjList->begin(), adjList->end());
-                csr->col_indices.insert(csr->col_indices.end() , adjList->begin(), adjList->end());
-            }
+    for(int i = 0; i < n_number_of_nodes; i++){
+        if(all_edges_new.find(i) == all_edges_new.end()){
+            csr->row_begin[i] = 0; 
+        }else{
+            vector<int>* adjList = &all_edges_new[i];
+            csr->row_begin[i] = priorNonzero + priorLen;
+            priorNonzero = priorNonzero + priorLen;
+            priorLen = adjList->size();
+          
+            sort(adjList->begin(), adjList->end());
+            csr->col_indices.insert(csr->col_indices.end() , adjList->begin(), adjList->end());
         }
+    }
 
-        csr->row_begin[n_number_of_nodes] = priorNonzero + priorLen;
+    csr->row_begin[n_number_of_nodes] = priorNonzero + priorLen;
 
-        int filledSize = csr->col_indices.size();
-        csr->values = new double[filledSize];
-        for(int i = 0; i < filledSize; i++){
-            if(out_arrows[csr->col_indices[i]]==0){
-                printf("Error: out_arrows[csr->col_indices[i]]==0");
-                continue;
-            }
-            csr->values[i] = 1. / out_arrows[csr->col_indices[i]];
+    int filledSize = csr->col_indices.size();
+    csr->values = new double[filledSize];
+    for(int i = 0; i < filledSize; i++){
+        if(out_arrows[csr->col_indices[i]]==0){
+            printf("Error: out_arrows[csr->col_indices[i]]==0");
+            continue;
         }
+        csr->values[i] = 1. / out_arrows[csr->col_indices[i]];
+    }
 
+    #if CSR_PRINT
+    printf("row_begins: \n");
+    for(int i = 0; i < n_number_of_nodes+1; i++){
+        printf("%d ",csr->row_begin[i]);
+    }
+    printf("\n");
+
+    printf("col_indices: \n");
+    for(int i = 0; i < csr->col_indices.size(); i++){
+        printf("%d ",csr->col_indices[i]);
+    }
+    printf("\n");
+
+    printf("values: \n");
+    for(int i = 0; i < filledSize; i++){
+        printf("%f ",csr->values[i]);
+    }
+    printf("\n");
+    #endif
+    
 
     vector<double> r0(n_number_of_nodes, 1.0); // This holds the initial rank of the nodes
     vector<double> r_next(n_number_of_nodes, 0.0); // This holds the next iteration of the pagerank
@@ -157,7 +201,6 @@ int main(int arg, char* argv[])
     {
         iterations++;
         diff = 0.0;
-        y = 1;
         for (int i = 0; i < n_number_of_nodes; i++)
         {
             r_next[i] = 0.0;
@@ -175,8 +218,10 @@ int main(int arg, char* argv[])
         if (diff<epsilon)
             break;
     }
-    double endTime = omp_get_wtime();
 
+    double endTime = omp_get_wtime();
+ 
+    
     printf("--> Pagerank is calculated\n");
     printf("Number of iterations: %d\n", iterations);
     printf("Top 5 nodes: \n");

@@ -50,7 +50,10 @@ unordered_map<int, vector<int>> all_edges_new;
 #define FILE "graph.txt"
 #define DEBUG_FILE_READ 0
 #define CSR_PRINT 0
-
+#define NODE_NUM 1850065
+#define EDGE_NUM 16741171
+#define CHECK(i) (i+= (i==6128 || i==84900 || i==84989) ? 20 :0)
+//6128 6146 84989 
 class CSR{
     public:
         vector<int> row_begin;
@@ -197,22 +200,22 @@ int main(int arg, char* argv[])
     }
     printf("\n");
     #endif
-    
+
+
     //Transfer the CSR to GPU
    	thrust::host_vector<int>	h_vec(filledSize);	
     for (int i = 0; i < filledSize; i++) {
         h_vec[i] = csr->values[i];
     }
-    thrust::device_vector<double> values=h_vec; // This holds the initial rank of the nodes
-    thrust::device_vector<int> col_indices=csr->col_indices; // This holds the initial rank of the nodes
-    thrust::device_vector<int> row_begin=csr->row_begin; // This holds the initial rank of the nodes
+    thrust::device_vector<double> values(h_vec); // This holds the initial rank of the nodes
+    printf("size of device_values: %d\n",values.size());
 
     // We need to r0 and r_next to GPU.
     //vector<double> r0_(n_number_of_nodes, 1.0); // This holds the initial rank of the nodes
     thrust::device_vector<double> r0(n_number_of_nodes,1/n_number_of_nodes); // This holds the initial rank of the nodes
     //vector<double> r_next(n_number_of_nodes, 0.0); // This holds the next iteration of the pagerank
     thrust::device_vector<double> r_next(n_number_of_nodes, 0.0); // This holds the next iteration of the pagerank
-    
+
     int iterations = 0; // This holds the number of iterations
     double alpha = 0.20; // Alpha value
     //double diff = 0.0; // Difference between the r0 and r_next
@@ -222,20 +225,28 @@ int main(int arg, char* argv[])
     double x = (1 - alpha) * (1. / n_number_of_nodes); //!!
 
     double bt = omp_get_wtime();
+
     cout<<"--> Start the pagerank calculation"<<endl;
-    
+  
+    ofstream myfile;
+    myfile.open ("example.txt");
+
     while(true)
     {
         iterations++;
-        for (int i = 0; i < n_number_of_nodes; i++)
+        for (int i = 1; i < 99600; i++)
         {
-            //make_permutation_iterator(
-            //    InputIterator first,
-            //    Iterator map
-            //)
-            // Returns an iterator that dereferences to first[map[i]] for each i.
-            auto p_iter = thrust::make_permutation_iterator(r_next.begin(), col_indices.begin()+row_begin[i]);
-            //inner_product(
+    
+            // make_permutation_iterator(
+            //     InputIterator first,
+            //     Iterator map
+            // )
+            //  Returns an iterator that dereferences to first[map[i]] for each i.
+            //  The iterator first must be at least as long as the longest sequence of indices accessed by the iterator map
+            printf("row_begin[%d]: %d\n",i,csr->row_begin[i]);CHECK(i);
+
+            auto p_iter = thrust::make_permutation_iterator(r0.begin(), csr->col_indices.begin() + csr->row_begin[i]);
+            //inner_product(clear
             //    InputIterator1 first1,
             //    InputIterator1 last1,
             //    InputIterator2 first2,
@@ -243,11 +254,10 @@ int main(int arg, char* argv[])
             // Returns the inner product of the two ranges . The inner product is defined as:
             // init + (first1[0] * first2[0]) + (first1[1] * first2[1]) + ... + (first1[n-1] * first2[n-1])
             //r_next[i] += csr->values[j] * r0[csr->col_indices[j]];
-            auto i_prod = thrust::inner_product(row_begin[i] + values.begin(), values.begin() + row_begin[i + 1], p_iter, 0.0);
-            r_next[i] = ((i_prod*alpha)+x)/n_number_of_nodes;
+            auto i_prod = thrust::inner_product(csr->row_begin[i] + values.begin(), values.begin() + csr->row_begin[i + 1], p_iter, 0.0);
+            r_next[i] = ((i_prod*alpha)+x);
+            
         }
-
-       
         // transform_reduce()
         // first	The beginning of the sequence.
         // last	The end of the sequence.
@@ -256,14 +266,11 @@ int main(int arg, char* argv[])
         // binary_op	The reduction operation.
          //diff += abs(r_next[i] - r0[i]);
         thrust::transform(r_next.begin(), r_next.end(), r0.begin(), diff.begin(), abs_());
-      
         double result = thrust::reduce(diff.begin(), diff.end(), 0.0, thrust::plus<double>());     
-
+    
         // difference_D[i] = | r2_D[i] - r1_D[i] |
         
-
-        printf("Difference after %02d iterations: %f\n", iterations, result);
-
+        printf("Iteration: %d, Diff: %.*e\n", iterations,10, diff);
 
         if (result <= epsilon) 
             break;
@@ -271,9 +278,9 @@ int main(int arg, char* argv[])
             //r0 = r_next; device to variable
             thrust::copy(r_next.begin(), r_next.end(), r0.begin());
         }
-        printf("Iteration: %d, Diff: %.*e\n", iterations,10, diff);
-    }
 
+    }
+    myfile.close();
     double et = omp_get_wtime();
     cout<<"Elapsed duration: " <<et-bt<<endl;
 
@@ -301,4 +308,4 @@ int main(int arg, char* argv[])
 }
 
 
-// g++-12 -O2 -o saxpy thrust.cpp -fopenmp -DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_OMP -lgomp -I /usr/local
+// g++-12 -O2 -o saxpy thrust.cpp -fopenmp -DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_OMP -lgomp -I ./thrust;

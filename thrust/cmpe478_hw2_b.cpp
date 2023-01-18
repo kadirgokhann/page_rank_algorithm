@@ -23,14 +23,15 @@
 #include <thrust/reduce.h>
 #include <thrust/transform.h>
 
-template<typename T>
-struct abs_ : public unary_function<T,T>
+
+struct abs_
 {
-  __host__ __device__ T operator()(const T &x,const T &x) const
-  {
-    return abs(x - y);
-  }
+    __host__ __device__
+    double operator()(const double& x, const double& y) const {
+        return abs(x - y);
+    }
 };
+
 
 using namespace std;
 
@@ -39,13 +40,10 @@ rth row and jth column (r and j starting from 0)
 a. increase row_begin(r+1) by 1
 b. sum from 0 to r-1. values[sum+1] is the new node's position
 c. col_indices[sum+1] is its equivalent column reference
-
 3 r 4 c
 in-degree --> row sum
 oudegree --> column sum
-
 If there is an edge from k to l, the kth column lth row is 1
-
 */
 
 unordered_map<int, vector<int>> all_edges_new;
@@ -167,7 +165,7 @@ int main(int arg, char* argv[])
             csr->col_indices.insert(csr->col_indices.end() , adjList->begin(), adjList->end());
         }
     }
-
+    cout<<"--> CSR is created"<<endl;
     csr->row_begin[n_number_of_nodes] = priorNonzero + priorLen;
 
     int filledSize = csr->col_indices.size();
@@ -201,7 +199,11 @@ int main(int arg, char* argv[])
     #endif
     
     //Transfer the CSR to GPU
-    thrust::device_vector<double> values=csr->values; // This holds the initial rank of the nodes
+   	thrust::host_vector<int>	h_vec(filledSize);	
+    for (int i = 0; i < filledSize; i++) {
+        h_vec[i] = csr->values[i];
+    }
+    thrust::device_vector<double> values=h_vec; // This holds the initial rank of the nodes
     thrust::device_vector<int> col_indices=csr->col_indices; // This holds the initial rank of the nodes
     thrust::device_vector<int> row_begin=csr->row_begin; // This holds the initial rank of the nodes
 
@@ -220,7 +222,7 @@ int main(int arg, char* argv[])
     double x = (1 - alpha) * (1. / n_number_of_nodes); //!!
 
     double bt = omp_get_wtime();
-
+    cout<<"--> Start the pagerank calculation"<<endl;
     
     while(true)
     {
@@ -241,7 +243,7 @@ int main(int arg, char* argv[])
             // Returns the inner product of the two ranges . The inner product is defined as:
             // init + (first1[0] * first2[0]) + (first1[1] * first2[1]) + ... + (first1[n-1] * first2[n-1])
             //r_next[i] += csr->values[j] * r0[csr->col_indices[j]];
-            auto i_prod = thrust::inner_product(row_begin[i] + values.begin(), values.begin() + rowBegin[i + 1], p_iter, 0.0);
+            auto i_prod = thrust::inner_product(row_begin[i] + values.begin(), values.begin() + row_begin[i + 1], p_iter, 0.0);
             r_next[i] = ((i_prod*alpha)+x)/n_number_of_nodes;
         }
 
@@ -253,7 +255,16 @@ int main(int arg, char* argv[])
         // init	The result is initialized to this value.
         // binary_op	The reduction operation.
          //diff += abs(r_next[i] - r0[i]);
-        double result = sthrust::transform_reduce(r_next.begin(), r_next.end(), r0.begin(), diff.begin(), abs_<double>(), 0.0, thrust::plus<double>());
+        thrust::transform(r_next.begin(), r_next.end(), r0.begin(), diff.begin(), abs_());
+      
+        double result = thrust::reduce(diff.begin(), diff.end(), 0.0, thrust::plus<double>());     
+
+        // difference_D[i] = | r2_D[i] - r1_D[i] |
+        
+
+        printf("Difference after %02d iterations: %f\n", iterations, result);
+
+
         if (result <= epsilon) 
             break;
          else {
@@ -288,3 +299,6 @@ int main(int arg, char* argv[])
     }
 	return 0;
 }
+
+
+// g++-12 -O2 -o saxpy thrust.cpp -fopenmp -DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_OMP -lgomp -I /usr/local
